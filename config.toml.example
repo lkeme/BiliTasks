@@ -1,0 +1,51 @@
+title = "BiliTasks"
+
+# 全局设置
+[global]
+debug = true # debug模式
+silence = true # 过滤封禁
+delay = 5 # 每个账号之间延迟
+mode = ["app"] # "pc", "app" 多个则随机
+
+[log]
+enable = true
+normal_log = "bilibili.log" # 日志文件名
+errors_log = "errors.log" # 错误日志
+
+# 数据库设置
+[database]
+host = "127.0.0.1"
+user = "root"
+pass = ""
+name = "login-1"
+port = 3306
+table = "login-user-001"
+idens = ["TEST-1", "TEST-2"]  # 支持一到多
+
+# 拨号设置
+[dial] # 未启用
+enable = false # 开关
+username = "123456"
+password = "123456"
+interval = 3  # 几个拨一次号
+
+# 代理设置
+[proxy] # 未启用
+enable = false # 开关
+pool = "proxy.txt" # 代理池
+
+# 观看
+[watch]
+enable = true # 开关
+delay = 1
+
+# 分享
+[share]
+enable = true # 开关
+delay = 1
+
+# 直播签到
+[live_sign]
+enable = true # 开关
+delay = 1
+

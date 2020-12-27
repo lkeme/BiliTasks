@@ -1,0 +1,7 @@
+chardet
+requests
+rsa
+toml
+pymysql
+faker
+functools
