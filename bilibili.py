@@ -5,7 +5,7 @@
 - contact: Useri@live.cn
 - file: bilibili.py
 - time: 2020/12/23 20:24
-- desc: 哔哩哔哩养号
+- desc: 哔哩哔哩任务姬
 """
 import re
 import faker
@@ -24,7 +24,7 @@ from uuid import uuid4
 
 try:
     from urllib import urlencode
-except:
+except Exception as e:
     from urllib.parse import urlencode
 
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
@@ -101,14 +101,24 @@ class Logger:
         return self
 
     # 正常日志
-    def i(self, message):
-        log = self.log_handle(message)
-        self.write(log, mode='i')
+    def i(self, message, mode='i'):
+        log = self.log_handle(message, mode)
+        self.write(log, mode)
 
     # 错误日志
-    def e(self, message):
-        log = self.log_handle(message)
-        self.write(log, mode='e')
+    def e(self, message, mode='e'):
+        log = self.log_handle(message, mode)
+        self.write(log, mode)
+
+    # 警告日志
+    def w(self, message, mode='w'):
+        log = self.log_handle(message, mode)
+        self.write(log, mode)
+
+    # 提醒日志
+    def n(self, message, mode='n'):
+        log = self.log_handle(message, mode)
+        self.write(log, mode)
 
     def write(self, packet, mode):
         if not self.config.get('log', 'enable'):
@@ -120,15 +130,24 @@ class Logger:
     def path_handle(self, mode):
         if not os.path.exists(self.root_path):
             os.makedirs(self.root_path)
-        if mode == 'e':
+        if mode in ['e', 'w']:
             self.filepath = f'{self.root_path}{self.errors_log}'
         else:
             self.filepath = f'{self.root_path}{self.normal_log}'
 
-    def log_handle(self, message):
-        log = f"[{self.format_time()}][{self.user if self.user else 'global'}] {message}"
+    def log_handle(self, message, mode):
+        log = ''
+        ori_log = f"[{self.format_time()}][{self.user if self.user else 'global'}] {message}"
+        if mode == 'e':
+            log = f'\033[1;31;40m{ori_log}\033[0m'
+        if mode == 'i':
+            log = f'\033[1;32;40m{ori_log}\033[0m'
+        if mode == 'w':
+            log = f'\033[1;33;40m{ori_log}\033[0m'
+        if mode == 'n':
+            log = f'\033[1;36;40m{ori_log}\033[0m'
         print(log, flush=True)
-        return log
+        return ori_log
 
 
 class Db(Singleton):
@@ -160,7 +179,7 @@ class Db(Singleton):
         # 过滤封禁
         if self.config.get('global', 'silence'):
             # sql = f"SELECT * from `{db_table}` where iden = '{iden}' AND `silence` = 2 AND `silence_up` = 2 AND `expires` != 0 AND `msg` like '%token%' AND `channel` != 'AppStore' LIMIT 1;"
-            sql = f"SELECT * from `{db_table}` where iden = '{iden}' AND `silence` = 2 AND `silence_up` = 2 AND `expires` != 0 AND `msg` like '%token%';"
+            sql = f"SELECT * from `{db_table}` where iden = '{iden}' AND `silence` = 2 AND `silence_up` = 2 AND `expires` != 0 AND `msg` like '%token%' limit 1;"
         else:
             sql = f"SELECT * from `{db_table}` where iden = '{iden}' AND `expires` != 0 AND `msg` like '%token%';"
         try:
@@ -202,29 +221,47 @@ class UsersTasks:
             print(f"无法加载用户 {e}")
             exit()
 
+    def get_mode_name(self, work_name):
+        mode = random.choice(self.config.get(work_name, 'mode'))
+        time.sleep(self.config.get(work_name, 'delay'))
+        return f'{mode}_{work_name}'
+
     def work(self):
         self.log.i(f'加载 {len(self.users)} 个用户')
         # 乱序
         random.shuffle(self.users)
         for user in self.users:
-            mode = random.choice(self.config.get('global', 'mode'))
             # 实例化任务
-            instance = BiliTasks(user, mode)
+            instance = BiliTasks(user, self.config.get('global', 'mode'))
             try:
                 videos = instance.fetch_videos()
                 if instance.is_login():
+                    # 观看
                     if self.config.get('watch', 'enable'):
-                        name = f'{mode}_watch'
+                        name = self.get_mode_name('watch')
                         getattr(instance, name)(videos.pop())
-                        time.sleep(self.config.get('watch', 'delay'))
+                    # 分享
                     if self.config.get('share', 'enable'):
-                        name = f'{mode}_share'
+                        name = self.get_mode_name('share')
                         getattr(instance, name)(videos.pop())
-                        time.sleep(self.config.get('share', 'delay'))
+                    # 直播间签到
                     if self.config.get('live_sign', 'enable'):
-                        name = f'{mode}_live_sign'
+                        name = self.get_mode_name('live_sign')
                         getattr(instance, name)()
-                        time.sleep(self.config.get('live_sign', 'delay'))
+                    # 直播间送礼
+                    if self.config.get('live_send', 'enable'):
+                        gift_id = self.config.get('live_send', 'gift_id')
+                        target_rid = self.config.get('live_send', 'target_rid')
+                        target_uid = self.config.get('live_send', 'target_uid')
+                        expires = self.config.get('live_send', 'expires')
+                        name = self.get_mode_name('live_send')
+                        getattr(instance, name)(
+                            gift_id, expires, target_rid, target_uid
+                        )
+                    # 银瓜子兑换硬币
+                    if self.config.get('silver2coin', 'enable'):
+                        name = self.get_mode_name('silver2coin')
+                        getattr(instance, name)()
             except Exception as e:
                 instance.log.i(f'任务执行错误 {e}')
             time.sleep(self.config.get('global', 'delay'))
@@ -253,15 +290,16 @@ class BiliTasks:
             'face': "",
             'level': 0,
             'nickname': "",
+            'tel_status': False,
         }
         self.proxy = None
 
         self.log = Logger().set_user(self.get_uid())
 
-        if mode == 'pc':
+        if 'pc' in self.mode:
             self.ua = self.random_pc_ua()
 
-        if mode in ['app']:
+        if 'app' in self.mode:
             self.access_token = self.user['access_key']
             self.refresh_token = self.user['refres_key']
             self.username = ""
@@ -458,10 +496,10 @@ class BiliTasks:
 
     # 是否登录
     def is_login(self, **kwargs):
-        return self.get_user_info()
+        return self.get_user_info_main()
 
-    # 获取用户信息
-    def get_user_info(self):
+    # 获取主站用户信息
+    def get_user_info_main(self):
         url = f"https://api.bilibili.com/x/space/myinfo?jsonp=jsonp"
         headers = {
             'accept': 'application/json, text/plain, */*',
@@ -486,13 +524,37 @@ class BiliTasks:
             self.info['face'] = response['data']['face']
             self.info['level'] = response['data']['level']
             self.info['nickname'] = response['data']['name']
+            self.info['tel_status'] = bool(response['data']['tel_status'])
             self.log.i(
-                f"{self.info['nickname']}(UID={self.get_uid()}), Lv.{self.info['level']}({self.info['experience']['current']}/{self.info['experience']['next']}), 拥有{self.info['coins']}枚硬币, 账号{'状态正常' if not self.info['ban'] else '被封禁'}")
-            self.log.i(f"用户登录信息有效")
+                f"{self.info['nickname']}(UID={self.get_uid()}), Lv.{self.info['level']}({self.info['experience']['current']}/{self.info['experience']['next']}), 拥有{self.info['coins']}枚硬币, 账号{'状态正常' if self.info['ban'] else '被封禁'}")
+            self.log.i(f"[主站用户信息] 有效 {response['code']}")
             return True
         else:
-            self.log.e(f"用户信息获取失败 {response}")
-        return False
+            self.log.e(f"[主站用户信息] 无效 {response}")
+            return False
+
+    # 获取直播站用户信息
+    def get_user_info_live(self):
+        url = 'https://api.live.bilibili.com/xlive/web-ucenter/user/get_user_info'
+        headers = {
+            'accept': 'application/json, text/plain, */*',
+            'accept-encoding': 'gzip, deflate, br',
+            'accept-language': 'zh-CN,zh;q=0.9',
+            'cookie': self.user['cookie'],
+            'origin': 'https://link.bilibili.com',
+            'referer': 'https://link.bilibili.com/p/center/index',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-site',
+            'user-agent': self.ua,
+        }
+        response = self._requests("get", url, headers=headers)
+        if response and response.get("code") == 0:
+            self.log.i(f"[直播站用户信息] 有效 {response['code']}")
+            return response
+        else:
+            self.log.e(f"[直播站用户信息] 无效 {response}")
+            return False
 
     # APP 观看
     def app_watch(self, video):
@@ -687,6 +749,7 @@ class BiliTasks:
     # ANDROID 分享
     def __android_share(self, video):
         aid, cid, bv_id = video['aid'], video['cid'], video['bvid']
+        """
         url = 'https://app.bilibili.com/x/v2/view/share/click'
         headers = {
             'Buvid': self.user['buvid'],
@@ -724,6 +787,44 @@ class BiliTasks:
             'ts': int(time.time()),
             'type': 'av',
         }
+        """
+        url = 'https://app.bilibili.com/x/v2/view/share/complete'
+        headers = {
+            'Buvid': self.user['buvid'],
+            'Device-ID': self.user['device'],
+            'fp_local': self.user['local_id'].lower(),
+            'fp_remote': self.user['local_id'].lower(),
+            'session_id': self.session_id,
+            'env': 'prod',
+            'APP-KEY': 'android',
+            'User-Agent': self.ua,
+            'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
+            'Host': 'app.bilibili.com',
+            'Connection': 'Keep-Alive',
+            'Accept-Encoding': 'gzip',
+            'Cookie': f'bfe_id={self.bfe_id}',
+        }
+        payload = {
+            'access_key': self.access_token,
+            'appkey': self.app_key,
+            'build': '6150400',
+            'c_locale': 'zh_CN',
+            'channel': self.user['channel'],
+            'ep_id': '',
+            'from': '7',
+            'from_spmid': 'tm.recommend.0.0',
+            'mobi_app': 'android',
+            'oid': aid,
+            'platform': 'android',
+            's_locale': 'zh_CN',
+            'season_id': '',
+            'share_channel': 'dynamic',
+            'share_trace_id': str(uuid4()).replace('-', ''),
+            'spmid': 'main.ugc-video-detail.0.0',
+            'statistics': '{"appId":1,"platform":3,"version":"6.15.0","abtest":""}',
+            'ts': int(time.time()),
+            'type': 'av',
+        }
         payload['sign'] = self.calc_sign(urlencode(self.ksort(payload)))
         response = self._requests("post", url, data=payload,
                                   headers=headers)
@@ -737,6 +838,7 @@ class BiliTasks:
     # IOS 分享
     def __ios_share(self, video):
         aid, cid, bv_id = video['aid'], video['cid'], video['bvid']
+        """
         url = 'https://app.bilibili.com/x/v2/view/share/click'
         headers = {
             'Host': 'app.bilibili.com',
@@ -763,6 +865,39 @@ class BiliTasks:
             'mobi_app': 'iphone',
             'from_spmid': 'tm.recommend.0.0',
             'from': 7,
+            'device': 'phone',
+            'build': 61500200,
+            'appkey': self.app_key,
+            'actionKey': 'appkey',
+            'access_key': self.access_token,
+        }
+        """
+        url = 'https://app.bilibili.com/x/v2/view/share/complete'
+        headers = {
+            'Host': 'app.bilibili.com',
+            'Connection': 'keep-alive',
+            'User-Agent': self.ua,
+            'Session_ID': self.session_id,
+            'Buvid': self.user['buvid'],
+            'APP-KEY': 'iphone',
+            'ENV': 'prod',
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Cookie': f"Buvid={self.user['buvid']}; {self.user['cookie']} bfe_id={self.bfe_id}",
+        }
+        payload = {
+            'type': 'av',
+            'ts': int(time.time()),
+            'statistics': '{"appId":1,"version":"6.15.0","abtest":"","platform":1}',
+            'spmid': 'main.ugc-video-detail.0.0',
+            'share_trace_id': str(uuid4()).replace('-', '').upper(),
+            'share_channel': 'qq',
+            's_locale': 'zh-Hans_CN',
+            'platform': 'ios',
+            'oid': aid,
+            'mobi_app': 'iphone',
+            'from': 7,
+            'from_spmid': 'tm.recommend.0.0',
             'device': 'phone',
             'build': 61500200,
             'appkey': self.app_key,
@@ -820,6 +955,8 @@ class BiliTasks:
 
     # ANDROID 直播签到
     def __android_live_sign(self):
+        if not self.info['tel_status'] or self.info['ban']:
+            return
         url = 'https://api.live.bilibili.com/rc/v1/Sign/doSign?'
         headers = {
             'Buvid': self.user['buvid'],
@@ -857,6 +994,8 @@ class BiliTasks:
 
     # IOS 直播签到
     def __ios_live_sign(self):
+        if not self.info['tel_status'] or self.info['ban']:
+            return
         url = 'https://api.live.bilibili.com/rc/v1/Sign/doSign?'
         headers = {
             'Host': 'api.live.bilibili.com',
@@ -893,6 +1032,8 @@ class BiliTasks:
 
     # PC 直播间签到
     def pc_live_sign(self):
+        if not self.info['tel_status'] or self.info['ban']:
+            return
         url = 'https://api.live.bilibili.com/xlive/web-ucenter/v1/sign/DoSign'
         headers = {
             'accept': 'application/json, text/plain, */*',
@@ -914,6 +1055,129 @@ class BiliTasks:
             self.log.e(f"[直播间签到任务] 签到失败 {response}")
             return False
 
+    # PC 直播间获取背包
+    def fetch_bag_list(self, target_rid):
+        url = f'https://api.live.bilibili.com/xlive/web-room/v1/gift/bag_list?t={int(time.time()) * 1000}&room_id={target_rid}'
+        headers = {
+            'accept': 'application/json, text/plain, */*',
+            'accept-encoding': 'gzip, deflate, br',
+            'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
+            'cookie': self.user['cookie'],
+            'origin': 'https://live.bilibili.com',
+            'referer': 'https://live.bilibili.com/',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-site',
+            'user-agent': self.ua,
+        }
+        response = self._requests("get", url, headers=headers)
+        if response and response.get("code") == 0:
+            self.log.i(f"[直播间送礼] 获取背包成功 {response['code']}")
+            return response['data']['list']
+        else:
+            self.log.e(f"[直播间送礼] 获取背包成功 {response}")
+            return []
+
+    # PC 直播间赠送礼物
+    def send_gift(self, bag, target_rid, target_uid):
+        url = 'https://api.live.bilibili.com/gift/v2/live/bag_send'
+        headers = {
+            'accept': 'application/json, text/plain, */*',
+            'accept-encoding': 'gzip, deflate, br',
+            'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
+            'content-type': 'application/x-www-form-urlencoded',
+            'cookie': self.user['cookie'],
+            'origin': 'https://live.bilibili.com',
+            'referer': 'https://live.bilibili.com/',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-site',
+            'user-agent': self.ua,
+        }
+        payload = {
+            'uid': self.get_uid(),
+            'gift_id': bag['gift_id'],
+            'ruid': target_uid,
+            'send_ruid': 0,
+            'gift_num': bag['gift_num'],
+            'bag_id': bag['bag_id'],
+            'platform': 'pc',
+            'biz_code': 'live',
+            'biz_id': target_rid,
+            'rnd': int(time.time()),
+            'storm_beat_id': 0,
+            'metadata': '',
+            'price': 0,
+            'csrf_token': self.get_csrf(),
+            'csrf': self.get_csrf(),
+            'visit_id': ''
+        }
+        response = self._requests("post", url, data=payload, headers=headers)
+        if response and response.get("code") == 0:
+            self.log.i(f"[直播间送礼] {bag['gift_name']}*{bag['gift_num']} 赠送成功")
+            return True
+        else:
+            self.log.e(
+                f"[直播间送礼] {bag['gift_name']}*{bag['gift_num']} 赠送失败 {response}")
+            return False
+
+    # PC 直播间赠送礼物
+    def pc_live_send(self, gift_id, expires, target_rid, target_uid):
+        if not self.info['tel_status'] or self.info['ban']:
+            return
+        valid_bag_list = []
+        bag_list = self.fetch_bag_list(target_rid)
+        if not bag_list:
+            return
+        for bag in bag_list:
+            # 过滤永久礼物
+            if bag['expire_at'] == 0 or bag['corner_mark'] == '永久':
+                continue
+            # 过滤有效期 和 有效的礼物id
+            if bag['gift_id'] != gift_id:
+                continue
+            if (bag['expire_at'] - int(time.time())) > expires:
+                continue
+            valid_bag_list.append(bag)
+        for bag in valid_bag_list:
+            self.send_gift(bag, target_rid, target_uid)
+
+    # PC 直播银瓜子兑换硬币
+    def pc_silver2coin(self):
+        if not self.info['tel_status'] or self.info['ban']:
+            return
+        live_info = self.get_user_info_live()
+        if not live_info:
+            return
+        if live_info['data']['silver'] < 700:
+            return
+        url = 'https://api.live.bilibili.com/pay/v1/Exchange/silver2coin'
+        headers = {
+            'accept': 'application/json, text/plain, */*',
+            'accept-encoding': 'gzip, deflate, br',
+            'accept-language': 'zh-CN,zh;q=0.9',
+            'content-type': 'application/x-www-form-urlencoded',
+            'cookie': self.user['cookie'],
+            'origin': 'https://live.bilibili.com',
+            'referer': 'https://live.bilibili.com/23058',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-site',
+            'user-agent': self.ua,
+        }
+        payload = {
+            'csrf_token': self.get_csrf(),
+            'csrf': self.get_csrf(),
+            'visit_id': 'visit_id',
+        }
+        response = self._requests("post", url, data=payload, headers=headers)
+        if response and response.get("code") == 0:
+            self.log.i(f"[银瓜子兑换硬币] 兑换成功")
+            return True
+        else:
+            self.log.e(f"[银瓜子兑换硬币] 兑换失败 {response}")
+            return False
+
 
 if __name__ == "__main__":
     start_time = int(input('请输入程序启动时间(0-23)时: '))
@@ -922,8 +1186,7 @@ if __name__ == "__main__":
         if start_time != time.localtime().tm_hour:
             if int(time.time()) % 300 == 0:
                 if start_time < time.localtime().tm_hour:
-                    surplus_hour = (
-                                           24 - time.localtime().tm_hour) + start_time
+                    surplus_hour = (24 - time.localtime().tm_hour) + start_time
                 else:
                     surplus_hour = start_time - time.localtime().tm_hour
                 print(f"离预定执行时间还有 {surplus_hour} 小时左右")
@@ -931,7 +1194,10 @@ if __name__ == "__main__":
             continue
         else:
             print(f"到达预定执行时间，启动程序")
+        # 执行任务
         UsersTasks().work()
+        if start_time != time.localtime().tm_hour:
+            time.sleep(1 * 60 * (60 - time.localtime().tm_min))
 
     if platform.system() == "Windows":
         os.system("pause >nul | set /p =请按任意键退出")

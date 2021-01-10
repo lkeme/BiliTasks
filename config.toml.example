@@ -5,7 +5,7 @@ title = "BiliTasks"
 debug = true # debug模式
 silence = true # 过滤封禁
 delay = 5 # 每个账号之间延迟
-mode = ["app"] # "pc", "app" 多个则随机
+mode = ['pc', 'app'] # 全局mode 以下任务用了什么模式就填里面
 
 [log]
 enable = true
@@ -34,18 +34,48 @@ interval = 3  # 几个拨一次号
 enable = false # 开关
 pool = "proxy.txt" # 代理池
 
+###########################
+## 任务区(模式多个随机)   ##
+## 支持列表["pc", "app"]  ##
+## 模式多个则随机运行     ##
+###########################
+
 # 观看
 [watch]
-enable = true # 开关
+# support_mode = ["pc", "app"]
+mode = ["pc", "app"]
+enable = true
 delay = 1
 
 # 分享
 [share]
-enable = true # 开关
+# support_mode = ["pc", "app"]
+mode = ["pc", "app"]
+enable = true
 delay = 1
 
 # 直播签到
 [live_sign]
-enable = true # 开关
+# support_mode = ["pc", "app"]
+mode = ["pc", "app"]
+enable = true
+delay = 1
+
+# 直播赠送
+[live_send]
+# support_mode = ["pc"]
+mode = ["pc"]
+enable = true
+gift_id = 1  # 礼物ID 1-辣条  30607-小心心  3-B坷垃
+target_rid = 9522051  # 目标直播间
+target_uid = 6580464  # 目标直播间对应UID
+expires = 86400  # 过期时间
+delay = 1
+
+# 银瓜子兑换硬币
+[silver2coin]
+# support_mode = ["pc"]
+mode = ["pc"]
+enable = true
 delay = 1
 
