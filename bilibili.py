@@ -179,7 +179,7 @@ class Db(Singleton):
         # 过滤封禁
         if self.config.get('global', 'silence'):
             # sql = f"SELECT * from `{db_table}` where iden = '{iden}' AND `silence` = 2 AND `silence_up` = 2 AND `expires` != 0 AND `msg` like '%token%' AND `channel` != 'AppStore' LIMIT 1;"
-            sql = f"SELECT * from `{db_table}` where iden = '{iden}' AND `silence` = 2 AND `silence_up` = 2 AND `expires` != 0 AND `msg` like '%token%' limit 1;"
+            sql = f"SELECT * from `{db_table}` where iden = '{iden}' AND `silence` = 2 AND `silence_up` = 2 AND `expires` != 0 AND `msg` like '%token%';"
         else:
             sql = f"SELECT * from `{db_table}` where iden = '{iden}' AND `expires` != 0 AND `msg` like '%token%';"
         try:
@@ -201,6 +201,49 @@ class Db(Singleton):
         for iden in iden_list:
             infos += self._get_users_sql(db_table, iden)
         return infos
+
+
+class Filter(Singleton):
+    labels = {}
+
+    def __init__(self):
+        pass
+
+    def set_label_data(self, label, data):
+        # 判断文件是否存在
+        label_file = f'./filters/{label}.txt'
+        # 不考虑文件存在 直接写入或者创建
+        with open(label_file, 'a+', encoding='utf-8') as f:
+            f.write(f'{data}\n')
+        # 追加到标签数据
+        self.labels[label] += f'{data}\n'
+        return
+
+    def get_label_data(self, label):
+        # 判断内容是否存在
+        if label in self.labels:
+            return
+        # 判断文件是否存在
+        label_file = f'./filters/{label}.txt'
+        if not os.path.exists(label_file):
+            # 过滤文件不存在 直接赋值空
+            self.labels[label] = ''
+        else:
+            # 过滤文件存在 赋值内容
+            with open(label_file, 'r', encoding='utf-8') as f:
+                self.labels[label] = f.read()
+        return
+
+    def get_filter(self, label, data):
+        self.get_label_data(label)
+        if data in self.labels[label]:
+            return True
+        return False
+
+    def set_filter(self, label, data):
+        self.get_label_data(label)
+        self.set_label_data(label, data)
+        return
 
 
 class UsersTasks:
@@ -267,6 +310,9 @@ class UsersTasks:
             time.sleep(self.config.get('global', 'delay'))
 
 
+# {'code': 137004, 'message': '账号异常，操作失败', 'ttl': 1}
+
+
 class BiliTasks:
 
     def __init__(self, user, mode):
@@ -314,6 +360,8 @@ class BiliTasks:
                 self.ua = self.random_android_ua()
             self.session_id = self.random_session_id()
             self.bfe_id = self.random_bfe_id()
+
+        self.filter = Filter()
 
     # 匹配信息
     @staticmethod
@@ -526,7 +574,7 @@ class BiliTasks:
             self.info['nickname'] = response['data']['name']
             self.info['tel_status'] = bool(response['data']['tel_status'])
             self.log.i(
-                f"{self.info['nickname']}(UID={self.get_uid()}), Lv.{self.info['level']}({self.info['experience']['current']}/{self.info['experience']['next']}), 拥有{self.info['coins']}枚硬币, 账号{'状态正常' if self.info['ban'] else '被封禁'}")
+                f"{self.info['nickname']}(UID={self.get_uid()}), Lv.{self.info['level']}({self.info['experience']['current']}/{self.info['experience']['next']}), 拥有{self.info['coins']}枚硬币, 账号{'状态正常' if not self.info['ban'] else '被封禁'}")
             self.log.i(f"[主站用户信息] 有效 {response['code']}")
             return True
         else:
@@ -748,6 +796,9 @@ class BiliTasks:
 
     # ANDROID 分享
     def __android_share(self, video):
+        if self.filter.get_filter('share', self.get_uid()):
+            self.log.i(f"[分享任务] 分享失败, 过滤列表中.")
+            return
         aid, cid, bv_id = video['aid'], video['cid'], video['bvid']
         """
         url = 'https://app.bilibili.com/x/v2/view/share/click'
@@ -833,10 +884,15 @@ class BiliTasks:
             return True
         else:
             self.log.e(f"[分享任务] av{aid} 分享失败 {response}")
+            if '账号异常' in response:
+                self.filter.set_filter('share', self.get_uid())
             return False
 
     # IOS 分享
     def __ios_share(self, video):
+        if self.filter.get_filter('share', self.get_uid()):
+            self.log.i(f"[分享任务] 分享失败, 过滤列表中.")
+            return
         aid, cid, bv_id = video['aid'], video['cid'], video['bvid']
         """
         url = 'https://app.bilibili.com/x/v2/view/share/click'
@@ -912,10 +968,15 @@ class BiliTasks:
             return True
         else:
             self.log.e(f"[分享任务] av{aid} 分享失败 {response}")
+            if '账号异常' in response:
+                self.filter.set_filter('share', self.get_uid())
             return False
 
     # PC 分享
     def pc_share(self, video):
+        if self.filter.get_filter('share', self.get_uid()):
+            self.log.i(f"[分享任务] 分享失败, 过滤列表中.")
+            return
         aid, cid, bv_id = video['aid'], video['cid'], video['bvid']
         # aid = 稿件av号  bv_id = 原始
         url = 'https://api.bilibili.com/x/web-interface/share/add'
@@ -944,6 +1005,8 @@ class BiliTasks:
             return True
         else:
             self.log.e(f"[分享任务] av{aid} 分享失败 {response}")
+            if '账号异常' in response:
+                self.filter.set_filter('share', self.get_uid())
             return False
 
     # APP 直播签到

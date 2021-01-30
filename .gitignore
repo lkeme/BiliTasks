@@ -132,3 +132,4 @@ dmypy.json
 icon.ico
 proxy.txt
 config.toml
+filters/share.txt
