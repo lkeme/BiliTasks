@@ -310,9 +310,6 @@ class UsersTasks:
             time.sleep(self.config.get('global', 'delay'))
 
 
-# {'code': 137004, 'message': '账号异常，操作失败', 'ttl': 1}
-
-
 class BiliTasks:
 
     def __init__(self, user, mode):
@@ -884,7 +881,7 @@ class BiliTasks:
             return True
         else:
             self.log.e(f"[分享任务] av{aid} 分享失败 {response}")
-            if '账号异常' in response:
+            if '账号异常' in str(response):
                 self.filter.set_filter('share', self.get_uid())
             return False
 
@@ -968,7 +965,7 @@ class BiliTasks:
             return True
         else:
             self.log.e(f"[分享任务] av{aid} 分享失败 {response}")
-            if '账号异常' in response:
+            if '账号异常' in str(response):
                 self.filter.set_filter('share', self.get_uid())
             return False
 
@@ -1005,7 +1002,7 @@ class BiliTasks:
             return True
         else:
             self.log.e(f"[分享任务] av{aid} 分享失败 {response}")
-            if '账号异常' in response:
+            if '账号异常' in str(response):
                 self.filter.set_filter('share', self.get_uid())
             return False
 
